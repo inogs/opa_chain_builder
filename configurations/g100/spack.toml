@@ -1,0 +1,4 @@
+[spack]
+main_dir = "~/spack"
+commit = "develop"
+config=["config:verify_ssl:false"]

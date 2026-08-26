@@ -1,0 +1,13 @@
+[chain]
+name="V13CTest"
+home="${NAME}"
+hostname="${HOSTNAME}"
+workdir="${HOME}/work"
+arcdir="${HOME}/archive"
+inpdir="${HOME}/inpdir"
+account="OGS23_PRACE_IT"
+compiler="intel"
+stage="dev"
+os="linux"
+backup="false"
+arch="x86_64"

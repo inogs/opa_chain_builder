@@ -1,0 +1,11 @@
+[chain]
+hostname="g100"
+workdir="${HOME}/work"
+arcdir="${HOME}/archive"
+inpdir="${HOME}/inpdir"
+account="${SLURM_DEFAULT_ACCOUNT}"
+compiler="intel"
+stage="dev"
+os="linux"
+backup="false"
+arch="x86_64"
