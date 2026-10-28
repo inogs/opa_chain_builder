@@ -4,8 +4,13 @@ workdir="${HOME}/work"
 arcdir="${HOME}/archive"
 inpdir="${HOME}/inpdir"
 account="${SLURM_DEFAULT_ACCOUNT}"
+qos="qos_prio"
 compiler="intel"
 stage="dev"
 os="linux"
 backup="false"
 arch="x86_64"
+
+[chain.branches]
+preproc="V13C"
+build="Copernicus_V13C"

@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from sys import exit as sys_exit
 
+from opa_chain_builder.actions import build_chain
 from opa_chain_builder.config import ENV_VAR_NAME
 from opa_chain_builder.config import IS_OPA_CONFIG_DIR
 from opa_chain_builder.config import ChainConfig
@@ -76,7 +77,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         default=None,
-        help="Name of the chain to build.",
+        help="The main directory of the chain, where the repo will be cloned",
     )
 
     chain_parser.add_argument(
@@ -103,7 +104,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         default=None,
-        help="Path of the arc dir",
+        help="Path of the archive dir",
     )
 
     chain_parser.add_argument(
@@ -165,11 +166,14 @@ def main() -> int:
             install_dir=spack_config.main_dir,
             version=spack_config.commit,
             spack_config=spack_config.config,
+            search_for_local_compilers=True,
+            install_compilers=(),
         )
         return 0
 
     if args.action == BUILD_CHAIN_ACTION:
         chain_config = ChainConfig.read_from_disk(args.config)
+        spack_config = SpackConfig.read_from_disk(args.config)
 
         # Put the values read from the cli into the config object
         _add_to_config = (
@@ -177,6 +181,7 @@ def main() -> int:
             "opa_home",
             "workdir",
             "inpdir",
+            "arcdir",
             "compiler",
             "stage",
             "account",
@@ -187,11 +192,24 @@ def main() -> int:
                 config_field_name = "home"
             if field == "chain_name":
                 config_field_name = "name"
-            if getattr(args, field) is not None:
-                setattr(chain_config, config_field_name, getattr(args, field))
+            if (field_value := getattr(args, field)) is not None:
+                LOGGER.debug(
+                    'Setting value "%s" inside the config field "%s" because '
+                    "of what has been read from the command line argument "
+                    '"%s"',
+                    field_value,
+                    config_field_name,
+                    field,
+                )
+                setattr(chain_config, config_field_name, field_value)
 
         chain_config.concretize()
-        chain_config.prepare_environment_file()
+
+        build_chain(
+            chain_config=chain_config,
+            spack_main_dir=spack_config.main_dir,
+            env_configs_dir=args.config.parent.parent / "environments",
+        )
         return 0
 
     LOGGER.error("Unknown action: %s", args.action)

@@ -1,0 +1,57 @@
+# Spack environment for the OPA chain: GNU stack
+# (gcc/gfortran + OpenMPI + OpenBLAS, same libraries as src/README.md).
+#
+#   spack env activate -d $OPA_HOME/HOST/luvarusimperialis/spack_env/gcc
+#   spack concretize -f && spack install
+spack:
+  specs:
+  - openmpi@5
+  - openblas
+  - hdf5@1.14 +mpi +fortran +hl +szip
+  - netcdf-c +mpi
+  - netcdf-fortran
+  - parallel-netcdf +fortran +shared
+  - petsc@3.23 +mpi +fortran ~debug +hypre +mumps +scalapack +superlu-dist
+  - nco
+  - cmake
+
+  view: true
+  concretizer:
+    unify: true
+    reuse: false
+
+  config:
+    install_tree:
+      root: $env/opt
+
+  packages:
+    # Override the stale external in ~/.spack/packages.yaml
+    # (gcc@13.3.0, but /usr/bin/gcc is 15.2.0).
+    gcc::
+      buildable: false
+      externals:
+      - spec: gcc@15.2.0 languages:='c,c++,fortran'
+        prefix: /usr
+        extra_attributes:
+          compilers:
+            c: /usr/bin/gcc
+            cxx: /usr/bin/g++
+            fortran: /usr/bin/gfortran
+    # Never use the Intel compilers in this environment.
+    intel-oneapi-compilers::
+      buildable: false
+
+    c:
+      require: [gcc]
+    cxx:
+      require: [gcc]
+    fortran:
+      require: [gcc]
+    mpi:
+      require: [openmpi]
+    blas:
+      require: [openblas]
+    lapack:
+      require: [openblas]
+    scalapack:
+      require: [netlib-scalapack]

@@ -84,12 +84,17 @@ class OpaConfig(BaseModel, ABC):
         raise NotImplementedError
 
     @classmethod
+    def _read_raw_dictionary(cls, raw_dictionary: dict) -> Self:
+        """Read and validate this config's section from a raw dictionary."""
+        return cls.model_validate(raw_dictionary)
+
+    @classmethod
     def read_from_disk(cls, config_dir: Path) -> Self:
         """Read and validate this config's section from ``config_dir``."""
         config_name = cls._config_name()
         config_file = config_dir / f"{config_name}.toml"
         if not config_file.exists():
-            error_msg = f"Spack config file not found at {config_file}"
+            error_msg = f"Requested config file not found at {config_file}"
             raise FileNotFoundError(error_msg)
         with config_file.open("rb") as f:
             config_dict = tomllib.load(f)
@@ -99,7 +104,7 @@ class OpaConfig(BaseModel, ABC):
                 f"'{config_name}' section"
             )
             raise ValueError(error_msg)
-        return cls.model_validate(config_dict[config_name])
+        return cls._read_raw_dictionary(config_dict[config_name])
 
 
 class SpackConfig(OpaConfig):
@@ -120,6 +125,16 @@ class SpackConfig(OpaConfig):
         return Path(v).expanduser()
 
 
+class ChainBranchesConfig(BaseModel):
+    """Configuration needed to locate the branches of a toolchain."""
+
+    chain: str = "main"
+    preproc: str = "main"
+    bitsea: str = "master"
+    postproc: str = "main"
+    build: str = "main"
+
+
 class ChainConfig(OpaConfig):
     """Configuration used to build a toolchain environment file."""
 
@@ -130,15 +145,26 @@ class ChainConfig(OpaConfig):
     arcdir: Path | None = None
     inpdir: Path | None = None
     account: str | None = None
+    qos: str | None = None
     compiler: Literal["intel", "gcc"] = "intel"
     stage: Literal["dev", "prod"] = "dev"
     os: Literal["linux"] = "linux"
     backup: bool = False
     arch: str = "x86_64"
+    branches: ChainBranchesConfig = Field(default_factory=ChainBranchesConfig)
 
     @classmethod
     def _config_name(cls) -> str:
         return "chain"
+
+    @classmethod
+    def _read_raw_dictionary(cls, raw_dictionary: dict) -> Self:
+        if "branches" in raw_dictionary:
+            branches_config = ChainBranchesConfig.model_validate(
+                raw_dictionary["branches"]
+            )
+            raw_dictionary["branches"] = branches_config
+        return super()._read_raw_dictionary(raw_dictionary)
 
     def _replace_field(self, field_name: str) -> None:
         field_value = str(getattr(self, field_name))
@@ -231,7 +257,7 @@ class ChainConfig(OpaConfig):
     def _check_no_missing_fields(self) -> None:
         for field in self.model_fields:
             field_value = getattr(self, field)
-            if field_value is None:
+            if field_value is None and field != "qos":
                 raise IncompleteConfigError.because_of_missing_field(
                     field, self.__class__.__name__
                 )
@@ -285,6 +311,10 @@ class ChainConfig(OpaConfig):
         env_file += f'export OPA_ARCDIR="{self.arcdir}"\n'
         env_file += f'export OPA_INPDIR="{self.inpdir}"\n'
         env_file += f'export OPA_ACCOUNT="{self.account}"\n'
+        if self.qos is not None:
+            env_file += f'export OPA_PAR_QOS="{self.qos}"\n'
+        else:
+            env_file += 'export OPA_PAR_QOS=""\n'
         env_file += f'export OPA_ARCH="{self.arch}"\n'
         env_file += f'export OPA_BACKUP="{str(self.backup).lower()}"\n'
         env_file += f'export OPA_OS="{self.os}"\n'

@@ -1,0 +1,91 @@
+# Spack environment for the OPA chain
+#
+# Fully separated from the gcc environment: it has its own install tree, its own
+# compiler and its own view.
+#
+# Spack only accepts an external or already installed compiler, so the oneAPI
+# compilers must be installed into this tree before concretizing the rest.
+#
+#   spack -C $ENV/bootstrap install intel-oneapi-compilers@2025.2.1
+#   spack env activate -d $ENV
+#   spack concretize -f && spack install
+spack:
+  specs:
+  - <INTEL_COMPILER>
+  - intel-oneapi-mpi
+  - intel-oneapi-mkl
+  - hdf5@1.14 +mpi +fortran +hl +szip
+  - netcdf-c +mpi
+  - netcdf-fortran
+  - parallel-netcdf +fortran +shared
+  - petsc@3.23 +mpi +fortran ~debug +hypre +mumps +scalapack +superlu-dist
+  - nco
+  - cmake
+  - coreutils
+  - grep
+  - ncftp
+  - sshpass
+  - pngquant
+
+  view:
+    default:
+      root: .spack-env/view
+      link: roots
+      # intel-oneapi-compilers installs also mpirun, which confilicts with the
+      # mpirun of intel-oneapi-mpi. So we use this projection to move away the
+      # executables of intel-oneapi-compilers
+      projections:
+        intel-oneapi-compilers: 'oneapi-compilers'
+  concretizer:
+    unify: true
+    # Reuse is limited to this environment's own install tree ($env/opt), and
+    # it is needed to pick up the oneAPI compilers installed there.
+    reuse: true
+
+  config:
+    install_tree:
+      root: $env/opt
+    shared_linking:
+      type: rpath     # default: runpath
+      bind: false
+
+  packages:
+    # Use only the gcc provided by the Spack configuration (site or user scope),
+    # which is also the toolchain behind icx/icpx/ifx. Never build one.
+    gcc:
+      buildable: false
+    # Install the Intel compilers inside this environment, ignoring the
+    # external pointing into ~/spack/opt.
+    intel-oneapi-compilers::
+      buildable: true
+
+    python:
+      buildable: false
+
+    mpi:
+      require: [intel-oneapi-mpi]
+    blas:
+      require: [intel-oneapi-mkl]
+    lapack:
+      require: [intel-oneapi-mkl]
+    scalapack:
+      require: [intel-oneapi-mkl]
+
+    # Scientific stack compiled with icx/ifx (Fortran modules must match the
+    # compiler used for the model).
+    hdf5:
+      require: ['%intel-oneapi-compilers']
+    netcdf-c:
+      require: ['%intel-oneapi-compilers']
+    netcdf-fortran:
+      require: ['%intel-oneapi-compilers']
+    parallel-netcdf:
+      require: ['%intel-oneapi-compilers']
+    petsc:
+      require: ['%intel-oneapi-compilers']
+    hypre:
+      require: ['%intel-oneapi-compilers']
+    mumps:
+      require: ['%intel-oneapi-compilers']
+    superlu-dist:
+      require: ['%intel-oneapi-compilers']

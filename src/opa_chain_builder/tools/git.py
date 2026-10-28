@@ -1,8 +1,14 @@
 """Helpers to interact with git repositories."""
 
+import logging
 import shutil
 import subprocess
 from pathlib import Path
+
+from opa_chain_builder.tools.ssh import check_ssh_keys
+from opa_chain_builder.tools.ssh import ssh_host_from_url
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _run_git(
@@ -13,9 +19,11 @@ def _run_git(
         error_msg = "git executable not found; please install git"
         raise RuntimeError(error_msg)
 
+    cmd_line = [git_exe, *args]
+    LOGGER.info("Executing %s", " ".join(cmd_line))
     try:
-        return subprocess.run(
-            [git_exe, *args],
+        result = subprocess.run(
+            cmd_line,
             cwd=cwd,
             check=True,
             capture_output=True,
@@ -25,6 +33,14 @@ def _run_git(
         command = " ".join(["git", *args])
         error_msg = f"Command '{command}' failed:\n{exc.stderr}"
         raise RuntimeError(error_msg) from exc
+
+    LOGGER.info("Execution completed!")
+    return result
+
+
+def is_git_lfs_installed() -> bool:
+    """Return ``True`` if ``git-lfs`` is available in the system PATH."""
+    return shutil.which("git-lfs") is not None
 
 
 def clone_repository(
@@ -45,6 +61,9 @@ def clone_repository(
             commit SHA when combined with ``depth`` (git only allows shallow
             clones of branches/tags, not arbitrary commits).
         depth: Optional depth for a shallow clone.
+
+    For SSH URLs, the SSH keys that would be used are logged beforehand,
+    with a warning when a passphrase is going to be requested.
 
     Returns:
         The path to the cloned repository.
@@ -71,6 +90,12 @@ def clone_repository(
     if depth is not None:
         args += ["--depth", str(depth)]
     args += [repo_url, str(destination)]
+
+    if ssh_host_from_url(repo_url) is not None:
+        LOGGER.debug("The repo will be downloaded using SSH")
+        check_ssh_keys(repo_url)
+    else:
+        LOGGER.debug("The repo will *NOT* be downloaded using SSH")
 
     _run_git(args)
 

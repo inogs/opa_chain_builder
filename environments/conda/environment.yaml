@@ -1,0 +1,32 @@
+name: <OPA_NAME>
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python
+  - ipython
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - xarray
+  - scikit-learn
+  - mpi4py
+  - matplotlib
+  - basemap
+  - basemap-data
+  - basemap-data-hires
+  - cartopy
+  - cmocean
+  - pillow
+  - netcdf4
+  - zarr
+  - request
+  - fsspec
+  - gsw
+  - seawater
+  - python-dateutil
+  - latexcodec
+  - copernicusmarine

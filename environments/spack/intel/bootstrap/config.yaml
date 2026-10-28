@@ -1,0 +1,5 @@
+# Config scope used only to install the oneAPI compilers into ../opt
+# (see the header of ../spack.yaml).
+config:
+  install_tree:
+    root: <ENV_DIR>/opt
