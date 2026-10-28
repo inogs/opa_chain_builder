@@ -66,10 +66,22 @@ def get_default_config_path() -> Path | None:
     if config_dir is None:
         return None
 
-    candidate = config_dir / "defaults"
-    if candidate.exists():
-        return candidate
+    candidates = []
 
+    hpc_system = os.environ.get("HPC_SYSTEM", None)
+    if hpc_system is not None:
+        candidates.append(config_dir / hpc_system)
+
+    candidates.append(config_dir / "defaults")
+
+    for candidate in candidates:
+        LOGGER.debug("Checking if directory %s exists", candidate)
+        if candidate.exists():
+            LOGGER.debug("Found config dir: %s", candidate)
+            return candidate
+        LOGGER.debug("Directory %s does not exist", candidate)
+
+    LOGGER.debug("No config dir found among the candidates")
     return None
 
 

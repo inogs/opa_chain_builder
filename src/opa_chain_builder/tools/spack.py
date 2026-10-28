@@ -13,7 +13,6 @@ from opa_chain_builder.tools.git import clone_repository
 SPACK_REPO_URL = "https://github.com/spack/spack.git"
 INTEL_ONEAPI_COMPILERS_SPEC = "intel-oneapi-compilers@2025.3.2"
 GCC_COMPILER_SPEC = "gcc@15"
-_MIN_QUOTED_VALUE_LENGTH = 2
 
 
 LOGGER = logging.getLogger(__name__)
@@ -268,9 +267,7 @@ def _env_after_loading_package(
             continue
         value = value.strip()
         is_quoted = (
-            len(value) >= _MIN_QUOTED_VALUE_LENGTH
-            and value[0] == value[-1]
-            and value[0] in ("'", '"')
+            len(value) > 1 and value[0] == value[-1] and value[0] in ("'", '"')
         )
         if is_quoted:
             value = value[1:-1]
