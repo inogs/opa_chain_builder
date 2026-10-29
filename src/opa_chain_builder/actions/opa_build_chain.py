@@ -17,10 +17,10 @@ LOGGER = logging.getLogger(__name__)
 
 REPOS = MappingProxyType(
     {
-        "ogstm_preproc": "git@github.com:inogs/ogstm_preproc.git",
-        "bit.sea": "git@github.com:inogs/bit.sea.git",
-        "ogstm_postproc": "git@github.com:inogs/ogstm_postproc.git",
         "model_builder": "git@github.com:inogs/ModelBuild.git",
+        "bit.sea": "git@github.com:inogs/bit.sea.git",
+        "ogstm_preproc": "git@github.com:inogs/ogstm_preproc.git",
+        "ogstm_postproc": "git@github.com:inogs/ogstm_postproc.git",
     }
 )
 
@@ -173,14 +173,43 @@ def build_chain(
         LOGGER.debug("Setting permissions on file %s", key)
         key.chmod(0o600)
 
-    env_file = chain_home / "chain_env.sh"
-    LOGGER.info("Writing chain config file to %s", env_file)
-    env_file.write_text(chain_config.prepare_environment_file())
-
     host_dir = chain_home / "HOST"
     current_host_dir = host_dir / chain_hostname
     spack_env_dir = current_host_dir / "spack_env"
     python_env_dir = current_host_dir / "python_env"
+
+    env_file = chain_home / "chain_env.sh"
+    LOGGER.info("Writing chain config file to %s", env_file)
+    # Refuse to be sourced in a shell where another chain is already loaded
+    env_file_header = (
+        f'if [ -n "${{OPA_NAME+x}}" ] && [ "$OPA_NAME" != "{chain_name}" ]; '
+        "then\n"
+        f'    echo "Error: OPA_NAME is already set to \\"$OPA_NAME\\" '
+        f'(expected \\"{chain_name}\\")" >&2\n'
+        "    return 1\n"
+        "fi\n"
+        f'export OPA_NAME="{chain_name}"\n\n'
+    )
+    spack_setup_file = spack_main_dir.resolve() / "share/spack/setup-env.sh"
+    env_file_header += (
+        "if ! command -v spack > /dev/null 2>&1; then\n"
+        f'    source "{spack_setup_file}"\n'
+        "fi\n\n"
+    )
+    micromamba_exe = MicromambaExec.from_system_path()
+    # Keep the micromamba shell function of the user, if already initialized
+    env_file_footer = (
+        "\nif ! declare -F micromamba > /dev/null; then\n"
+        f'    eval "$("{micromamba_exe.exe_path.resolve()}" '
+        'shell hook --shell bash)"\n'
+        "fi\n"
+        f'micromamba activate "{python_env_dir.resolve()}"\n'
+    )
+    env_file.write_text(
+        env_file_header
+        + chain_config.prepare_environment_file()
+        + env_file_footer
+    )
 
     spack_env_dir.mkdir(parents=True, exist_ok=True)
     python_env_dir.mkdir(parents=True, exist_ok=True)
