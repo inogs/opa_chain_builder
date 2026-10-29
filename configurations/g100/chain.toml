@@ -12,5 +12,6 @@ backup="false"
 arch="x86_64"
 
 [chain.branches]
+chain="spack_env"
 preproc="V13C"
-build="Copernicus_V13C"
+builder="Copernicus_V13C"

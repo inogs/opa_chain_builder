@@ -144,7 +144,7 @@ class ChainBranchesConfig(BaseModel):
     preproc: str = "main"
     bitsea: str = "master"
     postproc: str = "main"
-    build: str = "main"
+    builder: str = "main"
 
 
 class ChainConfig(OpaConfig):

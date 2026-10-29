@@ -1,6 +1,7 @@
 import logging
 import tempfile
 from pathlib import Path
+from types import MappingProxyType
 from typing import cast
 
 from opa_chain_builder.config import ChainConfig
@@ -12,6 +13,16 @@ from opa_chain_builder.tools.spack import create_spack_env_from_yaml
 from opa_chain_builder.tools.spack import execute_spack_command
 
 LOGGER = logging.getLogger(__name__)
+
+
+REPOS = MappingProxyType(
+    {
+        "ogstm_preproc": "git@github.com:inogs/ogstm_preproc.git",
+        "bit.sea": "git@github.com:inogs/bit.sea.git",
+        "ogstm_postproc": "git@github.com:inogs/ogstm_postproc.git",
+        "model_builder": "git@github.com:inogs/ModelBuild.git",
+    }
+)
 
 
 def _build_py_env(
@@ -148,8 +159,7 @@ def build_chain(
     clone_repository(
         repo_url="git@gitlab-ssh.hpc.cineca.it:OGS/v5c.git",
         destination=chain_home,
-        ref="spack_env",
-        depth=2,
+        ref=chain_config.branches.chain,
     )
 
     # We need to set the right permissions on the keys file of the repo
@@ -202,3 +212,22 @@ def build_chain(
         chain_compiler=chain_compiler,
         conda_env_path=python_env_dir,
     )
+
+    LOGGER.info("Cloning repos...")
+    for repo_name, repo_url in REPOS.items():
+        repo_branch_attribute = repo_name.split("_")[-1].replace(".", "")
+        repo_branch = getattr(chain_config.branches, repo_branch_attribute)
+        LOGGER.info(
+            "Cloning repo %s using branch %s from %s",
+            repo_name,
+            repo_branch,
+            repo_url,
+        )
+
+        clone_repository(
+            repo_url=repo_url,
+            destination=current_host_dir / repo_name,
+            ref=repo_branch,
+        )
+
+    LOGGER.info("Chain is ready!")
