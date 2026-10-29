@@ -154,11 +154,14 @@ def _write_chain_env_file(
     )
     micromamba_exe = MicromambaExec.from_system_path()
     # Keep the micromamba shell function of the user, if already initialized
+    # Show the chain name in the prompt instead of the full env prefix; the
+    # value is parsed as YAML, so it is quoted to keep the trailing space
     env_file_footer = (
         "\nif ! declare -F micromamba > /dev/null; then\n"
         f'    eval "$("{micromamba_exe.exe_path.resolve()}" '
         'shell hook --shell bash)"\n'
         "fi\n"
+        f"MAMBA_ENV_PROMPT='\"({chain_name}) \"' "
         f'micromamba activate "{python_env_dir.resolve()}"\n'
     )
     env_file.write_text(
