@@ -10,6 +10,9 @@ dependencies = [
     "pydantic (>=2.13.4,<3.0.0)"
 ]
 
+[project.scripts]
+opa-chain-builder = "opa_chain_builder.__main__:main"
+
 [tool.poetry]
 packages = [
     {include = "opa_chain_builder", from = "src"}
