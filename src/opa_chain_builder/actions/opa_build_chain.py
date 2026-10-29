@@ -25,6 +25,19 @@ REPOS = MappingProxyType(
 )
 
 
+FINAL_MESSAGE = """
+Well done! Your chain is ready (almost)!
+
+The next steps:
+1. Execute `source {env_file}` to activate your environment.
+2. Execute `spack -E {spack_env_dir} install` to install all chain requirements
+3. Execute the model builder in {chain_home}/HOST/{chain_hostname}
+4. Run `make` and `make install` inside the {chain_home}/bin/src directory
+
+And that's it! Enjoy :-D
+"""
+
+
 def _build_py_env(
     python_config_dir: Path, env_prefix: Path, opa_name: str
 ) -> None:
@@ -115,6 +128,46 @@ def _build_spack_env(
     LOGGER.info("Spack environment setup complete at %s", spack_env_dir)
 
 
+def _write_chain_env_file(
+    env_file: Path,
+    chain_config: ChainConfig,
+    spack_main_dir: Path,
+    python_env_dir: Path,
+) -> None:
+    chain_name = cast("str", chain_config.name)
+    LOGGER.info("Writing chain config file to %s", env_file)
+    # Refuse to be sourced in a shell where another chain is already loaded
+    env_file_header = (
+        f'if [ -n "${{OPA_NAME+x}}" ] && [ "$OPA_NAME" != "{chain_name}" ]; '
+        "then\n"
+        f'    echo "Error: OPA_NAME is already set to \\"$OPA_NAME\\" '
+        f'(expected \\"{chain_name}\\")" >&2\n'
+        "    return 1\n"
+        "fi\n"
+        f'export OPA_NAME="{chain_name}"\n\n'
+    )
+    spack_setup_file = spack_main_dir.resolve() / "share/spack/setup-env.sh"
+    env_file_header += (
+        "if ! command -v spack > /dev/null 2>&1; then\n"
+        f'    source "{spack_setup_file}"\n'
+        "fi\n\n"
+    )
+    micromamba_exe = MicromambaExec.from_system_path()
+    # Keep the micromamba shell function of the user, if already initialized
+    env_file_footer = (
+        "\nif ! declare -F micromamba > /dev/null; then\n"
+        f'    eval "$("{micromamba_exe.exe_path.resolve()}" '
+        'shell hook --shell bash)"\n'
+        "fi\n"
+        f'micromamba activate "{python_env_dir.resolve()}"\n'
+    )
+    env_file.write_text(
+        env_file_header
+        + chain_config.prepare_environment_file()
+        + env_file_footer
+    )
+
+
 def build_chain(
     chain_config: ChainConfig, spack_main_dir: Path, env_configs_dir: Path
 ) -> None:
@@ -179,36 +232,11 @@ def build_chain(
     python_env_dir = current_host_dir / "python_env"
 
     env_file = chain_home / "chain_env.sh"
-    LOGGER.info("Writing chain config file to %s", env_file)
-    # Refuse to be sourced in a shell where another chain is already loaded
-    env_file_header = (
-        f'if [ -n "${{OPA_NAME+x}}" ] && [ "$OPA_NAME" != "{chain_name}" ]; '
-        "then\n"
-        f'    echo "Error: OPA_NAME is already set to \\"$OPA_NAME\\" '
-        f'(expected \\"{chain_name}\\")" >&2\n'
-        "    return 1\n"
-        "fi\n"
-        f'export OPA_NAME="{chain_name}"\n\n'
-    )
-    spack_setup_file = spack_main_dir.resolve() / "share/spack/setup-env.sh"
-    env_file_header += (
-        "if ! command -v spack > /dev/null 2>&1; then\n"
-        f'    source "{spack_setup_file}"\n'
-        "fi\n\n"
-    )
-    micromamba_exe = MicromambaExec.from_system_path()
-    # Keep the micromamba shell function of the user, if already initialized
-    env_file_footer = (
-        "\nif ! declare -F micromamba > /dev/null; then\n"
-        f'    eval "$("{micromamba_exe.exe_path.resolve()}" '
-        'shell hook --shell bash)"\n'
-        "fi\n"
-        f'micromamba activate "{python_env_dir.resolve()}"\n'
-    )
-    env_file.write_text(
-        env_file_header
-        + chain_config.prepare_environment_file()
-        + env_file_footer
+    _write_chain_env_file(
+        env_file=env_file,
+        chain_config=chain_config,
+        spack_main_dir=spack_main_dir,
+        python_env_dir=python_env_dir,
     )
 
     spack_env_dir.mkdir(parents=True, exist_ok=True)
@@ -260,3 +288,11 @@ def build_chain(
         )
 
     LOGGER.info("Chain is ready!")
+
+    final_message = FINAL_MESSAGE.format(
+        env_file=env_file,
+        spack_env_dir=spack_env_dir.resolve(),
+        chain_home=chain_home.resolve(),
+        chain_hostname=chain_hostname,
+    )
+    print(final_message)  # noqa: T201
