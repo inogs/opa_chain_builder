@@ -1,4 +1,5 @@
 import os
+import re
 import socket
 import tomllib
 from abc import ABC
@@ -19,6 +20,13 @@ from opa_chain_builder.tools.slurm import get_default_account
 # we can read the configurations from here.
 ENV_VAR_NAME = "OPA_CONFIG_DIR"
 IS_OPA_CONFIG_DIR = ".opa_config_dir"
+
+# A conditional value like <COND?V1:V2> is replaced with V1 if the condition
+# COND is true, with V2 otherwise. None of the three parts may contain the
+# characters "<", ">", "?" or ":"; V1 and V2 may be empty.
+CONDITIONAL_RE = re.compile(
+    r"<(?P<cond>[^<>?:]+)\?(?P<if_true>[^<>?:]*):(?P<if_false>[^<>?:]*)>"
+)
 
 
 LOGGER = getLogger(__name__)
@@ -192,7 +200,7 @@ class ChainConfig(OpaConfig):
                 f'string "{replace_string}"'
             )
             raise ValueError(error_msg)
-        for field in self.model_fields:
+        for field in type(self).model_fields:
             if field == field_name:
                 continue
             current_field_value = str(getattr(self, field))
@@ -231,10 +239,54 @@ class ChainConfig(OpaConfig):
         # Finally, we can put back the value of the original field hostname
         self.hostname = current_hostname_value
 
+    def _conditions(self) -> dict[str, bool]:
+        return {
+            "BACKUP": self.backup,
+            "PROD": self.stage == "prod",
+        }
+
+    def _resolve_conditionals(self) -> None:
+        conditions = self._conditions()
+
+        def _choose_value(match: re.Match[str]) -> str:
+            condition = match.group("cond")
+            if condition not in conditions:
+                error_msg = (
+                    f'Unknown condition "{condition}" in "{match.group(0)}"; '
+                    f"valid conditions are: {', '.join(conditions)}"
+                )
+                raise ValueError(error_msg)
+            if conditions[condition]:
+                return match.group("if_true")
+            return match.group("if_false")
+
+        for field in type(self).model_fields:
+            field_value = getattr(self, field)
+            if not isinstance(field_value, str | Path):
+                continue
+            original_value = str(field_value)
+
+            # The regex only matches the innermost conditionals, so we
+            # repeat the substitution until nested ones are resolved too
+            new_value = original_value
+            while (
+                resolved := CONDITIONAL_RE.sub(_choose_value, new_value)
+            ) != new_value:
+                new_value = resolved
+
+            if new_value != original_value:
+                LOGGER.debug(
+                    'Resolved conditionals of field "%s": "%s" -> "%s"',
+                    field,
+                    original_value,
+                    new_value,
+                )
+                setattr(self, field, new_value)
+
     def _replace_slurm_account_placeholder(self) -> None:
         # Do we need to replace the ${SLURM_DEFAULT_ACCOUNT} placeholder?
         replace_slurm_account = False
-        for field in self.model_fields:
+        for field in type(self).model_fields:
             field_value = getattr(self, field)
             if field_value is None:
                 continue
@@ -256,7 +308,7 @@ class ChainConfig(OpaConfig):
         if slurm_account is None:
             raise ValueError(unable_to_get_account_msg)
 
-        for field in self.model_fields:
+        for field in type(self).model_fields:
             field_value = getattr(self, field)
             if field_value is None:
                 continue
@@ -267,7 +319,7 @@ class ChainConfig(OpaConfig):
                 setattr(self, field, field_value)
 
     def _check_no_missing_fields(self) -> None:
-        for field in self.model_fields:
+        for field in type(self).model_fields:
             field_value = getattr(self, field)
             if field_value is None and field != "qos":
                 raise IncompleteConfigError.because_of_missing_field(
@@ -283,8 +335,17 @@ class ChainConfig(OpaConfig):
         """
         Replace the placeholders inside the values with their values.
 
-        This method looks for the following strings in its object's attribute
-        (exactly in the following order):
+        Before anything else, every conditional value of the form
+        `<COND?V1:V2>` is replaced with `V1` if the condition `COND` is true,
+        and with `V2` otherwise. The available conditions are:
+        - BACKUP: true if the `backup` attribute is true
+        - PROD: true if the `stage` attribute is "prod"
+        Conditionals can be nested, and `V1` and `V2` may contain the
+        placeholders described below. An unknown condition raises a
+        ValueError.
+
+        Then, this method looks for the following strings in its object's
+        attributes (exactly in the following order):
         - ${NAME}
         - ${HOSTNAME}
         - ${HOME}
@@ -301,6 +362,8 @@ class ChainConfig(OpaConfig):
         this placeholder is used but slurm is not installed, this will raise
         a ValueError.
         """
+        self._resolve_conditionals()
+
         current_hostname_value = self._prepare_hostname_placeholder()
 
         self._replace_field("name")

@@ -32,6 +32,7 @@ versions and the variants defined inside this repository.
   - [`spack.toml`](#spacktoml)
   - [`chain.toml`](#chaintoml)
   - [Placeholders](#placeholders)
+  - [Conditional values](#conditional-values)
 - [Environment templates](#environment-templates)
   - [How the environment directory is found](#how-the-environment-directory-is-found)
   - [Python environment](#python-environment)
@@ -289,6 +290,33 @@ contain the following placeholders, which are resolved in this order:
 Because of the order, `home` can use `${NAME}` and `${HOSTNAME}`, and the
 other paths can use `${HOME}`, but a field cannot refer to itself (e.g.
 `name` cannot contain `${NAME}`).
+
+### Conditional values
+
+A value may also contain conditional parts of the form `<COND?V1:V2>`,
+which are replaced with `V1` if the condition `COND` is true and with `V2`
+otherwise. The available conditions are:
+
+| Condition | True when |
+| --- | --- |
+| `BACKUP` | `backup` is `true` |
+| `PROD` | `stage` is `"prod"` |
+
+For example:
+
+```toml
+[chain]
+qos = "<PROD?qos_prio:qos_dbg>"          # "qos_prio" in prod, "qos_dbg" in dev
+name = "V13C<PROD?:_dev>"                # empty values are allowed
+arcdir = "${HOME}/<BACKUP?backup:archive>"
+```
+
+Conditional values are resolved **before** the placeholders, so `V1` and
+`V2` may contain placeholders, and the conditions follow the values given
+on the command line (e.g. `-s prod`). Conditionals can be nested
+(`<PROD?<BACKUP?a:b>:c>`). `V1` and `V2` may not contain the characters
+`<`, `>`, `?` and `:`; an unknown condition stops `build_chain` with an
+error.
 
 ## Environment templates
 
