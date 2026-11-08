@@ -63,6 +63,21 @@ def test_install_spack_logging(tmp_path, caplog):
         )
 
 
+def test_install_spack_search_compilers_requires_scope(tmp_path):
+    with (
+        patch("opa_chain_builder.tools.spack.clone_repository") as mock_clone,
+        pytest.raises(ValueError, match="compiler_scope can not be None"),
+    ):
+        install_spack(
+            install_dir=tmp_path / "spack",
+            version="v0.21.0",
+            search_for_local_compilers=True,
+            compiler_scope=None,
+        )
+
+    mock_clone.assert_not_called()
+
+
 def test_execute_spack_command_logging(caplog):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(

@@ -400,23 +400,27 @@ def install_spack(  # noqa: PLR0913
         spack_config: Optional list of Spack configuration directives to
             submit to the Spack config file.
         search_for_local_compilers: If ``True``, run ``spack compiler find``
-            (under ``compiler_scope``, if given) to register compilers already
-            present on the machine before installing the new ones. The scope
-            is always "site" for the compilers found by this function.
+            under ``compiler_scope`` to register compilers already present on
+            the machine before installing the new ones. In this case,
+            ``compiler_scope`` must not be ``None``.
         install_compilers: Compilers to install, chosen among ``"intel"``
             (``intel-oneapi-compilers``) and ``"gcc"`` (a recent GCC). Use
             ``("intel", "gcc")`` to install both, or an empty tuple to skip
             compilers.
         compiler_scope: Configuration scope ``spack compiler find`` should
-            register the compilers under (e.g. ``site``, ``user``). If
-            ``None``, the compiler is not registered in any scope.
+            register the compilers under (e.g. ``spack``, ``site``,
+            ``user``). Defaults to ``spack``, the scope of the Spack
+            instance itself. If ``None``, the installed compilers are not
+            registered in any scope.
 
     Returns:
         The path to the Spack installation (``install_dir``).
 
     Raises:
         ValueError: If ``install_compilers`` contains an unknown compiler
-            name. Checked before anything is cloned or installed.
+            name, or if ``search_for_local_compilers`` is ``True`` and
+            ``compiler_scope`` is ``None``. Checked before anything is cloned
+            or installed.
         FileExistsError: If ``install_dir`` already exists and is not
             empty.
         RuntimeError: If cloning Spack, checking out ``version``, installing
@@ -430,6 +434,14 @@ def install_spack(  # noqa: PLR0913
         error_msg = (
             f"Unknown compiler(s) {unknown_compilers}, expected a subset of "
             f"{list(COMPILER_INSTALLERS)}"
+        )
+        raise ValueError(error_msg)
+
+    if search_for_local_compilers and compiler_scope is None:
+        error_msg = (
+            "A compiler scope is required to register the local compilers: "
+            "compiler_scope can not be None when search_for_local_compilers "
+            "is True"
         )
         raise ValueError(error_msg)
 
