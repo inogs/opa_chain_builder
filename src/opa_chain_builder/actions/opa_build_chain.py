@@ -30,7 +30,7 @@ Well done! Your chain is ready (almost)!
 
 The next steps:
 1. Execute `source {env_file}` to activate your environment.
-2. Execute `spack -E {spack_env_dir} install` to install all chain requirements
+2. Execute `spack -e {spack_env_dir} install` to install all chain requirements
 3. Execute the model builder in {chain_home}/HOST/{chain_hostname}
 4. Run `make` and `make install` inside the {chain_home}/bin/src directory
 
