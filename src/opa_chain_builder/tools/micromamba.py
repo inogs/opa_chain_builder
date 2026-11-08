@@ -29,7 +29,14 @@ _PLATFORMS = {
 LOGGER = logging.getLogger(__name__)
 
 
-def _micromamba_platform() -> str:
+def micromamba_platform() -> str:
+    """
+    Return the conda platform name (e.g. ``linux-64``) of this machine.
+
+    Raises:
+        RuntimeError: If the current platform is not supported.
+
+    """
     key = (sys.platform, platform.machine().lower())
     if key not in _PLATFORMS:
         error_msg = f"Unsupported platform for micromamba: {key}"
@@ -122,7 +129,7 @@ class MicromambaExec:
 
         """
         install_dir = Path(install_dir)
-        url = MICROMAMBA_URL_TEMPLATE.format(_micromamba_platform())
+        url = MICROMAMBA_URL_TEMPLATE.format(micromamba_platform())
 
         LOGGER.info("Downloading latest micromamba from '%s'", url)
         try:

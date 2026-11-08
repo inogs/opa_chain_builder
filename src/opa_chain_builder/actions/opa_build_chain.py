@@ -8,11 +8,15 @@ from opa_chain_builder.config import ChainConfig
 from opa_chain_builder.tools.git import clone_repository
 from opa_chain_builder.tools.git import is_git_lfs_installed
 from opa_chain_builder.tools.micromamba import MicromambaExec
+from opa_chain_builder.tools.micromamba import micromamba_platform
 from opa_chain_builder.tools.spack import Bootstrap
 from opa_chain_builder.tools.spack import create_spack_env_from_yaml
 from opa_chain_builder.tools.spack import execute_spack_command
 
 LOGGER = logging.getLogger(__name__)
+
+CONDA_LOCK_FILE_NAME = "environment.lock"
+LOCK_PLATFORM_PREFIX = "# platform:"
 
 
 REPOS = MappingProxyType(
@@ -38,20 +42,89 @@ And that's it! Enjoy :-D
 """
 
 
+def _read_lock_platform(lock_file: Path) -> str | None:
+    """
+    Read the platform declared in an explicit conda lock file.
+
+    Explicit lock files (generated with ``conda list --explicit`` or
+    ``micromamba env export --explicit``) contain a header line like
+    ``# platform: linux-64``.
+
+    Args:
+        lock_file: Path to the lock file.
+
+    Returns:
+        The declared platform, or ``None`` if the file does not declare one.
+
+    """
+    with lock_file.open() as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if line.startswith(LOCK_PLATFORM_PREFIX):
+                return line.removeprefix(LOCK_PLATFORM_PREFIX).strip()
+            if line and not line.startswith("#"):
+                # The header is over
+                break
+    return None
+
+
+def _get_usable_lock_file(python_config_dir: Path) -> Path | None:
+    """
+    Return the conda lock file to use, if any.
+
+    The lock file is used only if it exists and it has been generated for
+    the platform of the current machine (or if it does not declare any
+    platform).
+
+    Args:
+        python_config_dir: Directory containing the conda environment files.
+
+    Returns:
+        The path of the lock file, or ``None`` if no usable lock file exists.
+
+    """
+    lock_file = python_config_dir / CONDA_LOCK_FILE_NAME
+    if not lock_file.is_file():
+        LOGGER.debug("No conda lock file found at %s", lock_file)
+        return None
+
+    lock_platform = _read_lock_platform(lock_file)
+    current_platform = micromamba_platform()
+    if lock_platform is not None and lock_platform != current_platform:
+        LOGGER.warning(
+            "The conda lock file %s has been generated for platform %s, "
+            "but the current platform is %s; it will be ignored",
+            lock_file,
+            lock_platform,
+            current_platform,
+        )
+        return None
+
+    return lock_file
+
+
 def _build_py_env(
     python_config_dir: Path, env_prefix: Path, opa_name: str
 ) -> None:
     micromamba_exe = MicromambaExec.from_system_path()
 
-    env_file = python_config_dir / "environment.yaml"
-    with tempfile.TemporaryDirectory() as temporary_dir:
-        temp_dir_path = Path(temporary_dir)
-        temp_env_file = temp_dir_path / "environment.yaml"
+    lock_file = _get_usable_lock_file(python_config_dir)
+    if lock_file is not None:
+        LOGGER.info("Building Python environment from lock file %s", lock_file)
+        micromamba_exe.create_env(env_file=lock_file, prefix=env_prefix)
+    else:
+        env_file = python_config_dir / "environment.yaml"
+        LOGGER.info("Building Python environment from %s", env_file)
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            temp_dir_path = Path(temporary_dir)
+            temp_env_file = temp_dir_path / "environment.yaml"
 
-        env_file_content = env_file.read_text()
-        env_file_content = env_file_content.replace("<OPA_NAME>", opa_name)
-        temp_env_file.write_text(env_file_content)
-        micromamba_exe.create_env(env_file=temp_env_file, prefix=env_prefix)
+            env_file_content = env_file.read_text()
+            env_file_content = env_file_content.replace("<OPA_NAME>", opa_name)
+            temp_env_file.write_text(env_file_content)
+            micromamba_exe.create_env(
+                env_file=temp_env_file, prefix=env_prefix
+            )
 
     pip_packages = python_config_dir / "pip_packages.txt"
     if not pip_packages.exists():
