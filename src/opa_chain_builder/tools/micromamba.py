@@ -108,6 +108,50 @@ class MicromambaExec:
             raise MicromambaNotFoundError(error_msg)
         return cls(found)
 
+    @classmethod
+    def from_current_env(cls) -> Self:
+        """
+        Find the micromamba executable used by the current environment.
+
+        The ``MAMBA_EXE`` environment variable is checked first: if it points
+        to an executable file named ``micromamba``, that file is used.
+        Otherwise, the executable is searched in the system ``PATH``.
+
+        Returns:
+            A ``MicromambaExec`` pointing to the executable found.
+
+        Raises:
+            MicromambaNotFoundError: If ``MAMBA_EXE`` does not point to a
+                valid micromamba executable and micromamba is not in the
+                ``PATH``.
+
+        """
+        mamba_exe = os.environ.get("MAMBA_EXE")
+        if mamba_exe:
+            exe_path = Path(mamba_exe)
+            if (
+                exe_path.name == MICROMAMBA_EXE_NAME
+                and exe_path.is_file()
+                and os.access(exe_path, os.X_OK)
+            ):
+                LOGGER.debug("Using micromamba from MAMBA_EXE: '%s'", exe_path)
+                return cls(exe_path)
+            LOGGER.debug(
+                "MAMBA_EXE='%s' is not a micromamba executable; "
+                "searching the system PATH",
+                mamba_exe,
+            )
+
+        try:
+            return cls.from_system_path()
+        except MicromambaNotFoundError as exc:
+            error_msg = (
+                "micromamba executable not found: MAMBA_EXE does not point "
+                "to a micromamba executable and micromamba is not in the "
+                "system PATH"
+            )
+            raise MicromambaNotFoundError(error_msg) from exc
+
     @staticmethod
     def install(install_dir: str | Path) -> "MicromambaExec":
         """

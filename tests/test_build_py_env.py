@@ -34,7 +34,7 @@ def _run_build(conda_dir, env_prefix, current_platform="linux-64"):
         patch(f"{MODULE}.MicromambaExec") as mock_exec_cls,
         patch(f"{MODULE}.micromamba_platform", return_value=current_platform),
     ):
-        mock_exe = mock_exec_cls.from_system_path.return_value
+        mock_exe = mock_exec_cls.from_current_env.return_value
         mock_exe.create_env.side_effect = fake_create_env
         _build_py_env(
             python_config_dir=conda_dir,
@@ -96,7 +96,7 @@ def test_build_py_env_with_lock_still_installs_pip_packages(
             env_prefix=env_prefix,
             opa_name="my_opa",
         )
-        mock_exe = mock_exec_cls.from_system_path.return_value
+        mock_exe = mock_exec_cls.from_current_env.return_value
         commands = [c.kwargs["commands"] for c in mock_exe.run.call_args_list]
 
     assert commands == [["pip", "install", "foo"], ["pip", "install", "bar"]]

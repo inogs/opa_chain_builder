@@ -106,7 +106,7 @@ def _get_usable_lock_file(python_config_dir: Path) -> Path | None:
 def _build_py_env(
     python_config_dir: Path, env_prefix: Path, opa_name: str
 ) -> None:
-    micromamba_exe = MicromambaExec.from_system_path()
+    micromamba_exe = MicromambaExec.from_current_env()
 
     lock_file = _get_usable_lock_file(python_config_dir)
     if lock_file is not None:
@@ -225,7 +225,7 @@ def _write_chain_env_file(
         f'    source "{spack_setup_file}"\n'
         "fi\n\n"
     )
-    micromamba_exe = MicromambaExec.from_system_path()
+    micromamba_exe = MicromambaExec.from_current_env()
     # Keep the micromamba shell function of the user, if already initialized
     # Show the chain name in the prompt instead of the full env prefix; the
     # value is parsed as YAML, so it is quoted to keep the trailing space
