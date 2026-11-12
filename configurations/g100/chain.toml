@@ -1,6 +1,6 @@
 [chain]
 hostname="g100"
-workdir="${HOME}/work"
+workdir="${HOME}/wrkdir"
 arcdir="${HOME}/archive"
 inpdir="${HOME}/inpdir"
 account="${SLURM_DEFAULT_ACCOUNT}"

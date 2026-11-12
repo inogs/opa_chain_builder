@@ -2,7 +2,7 @@
 name="V13CTest"
 home="${NAME}"
 hostname="${HOSTNAME}"
-workdir="${HOME}/work"
+workdir="${HOME}/wrkdir"
 arcdir="${HOME}/archive"
 inpdir="${HOME}/inpdir"
 account="OGS23_PRACE_IT"
