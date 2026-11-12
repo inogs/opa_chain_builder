@@ -1,0 +1,3 @@
+[spack]
+main_dir = "/leonardo_scratch/fast/OGS_prod2528_0/spack"
+commit = "develop"
