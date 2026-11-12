@@ -2,8 +2,7 @@ name: <OPA_NAME>
 
 channels:
   - conda-forge
-  - defaults
-
+  - nodefaults
 dependencies:
   - python
   - ipython
@@ -23,7 +22,7 @@ dependencies:
   - pillow
   - netcdf4
   - zarr
-  - request
+  - requests
   - fsspec
   - gsw
   - seawater
