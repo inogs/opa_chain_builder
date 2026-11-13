@@ -1,4 +1,5 @@
 import logging
+import os
 import shlex
 import tempfile
 from dataclasses import dataclass
@@ -37,6 +38,25 @@ REPOS = MappingProxyType(
         "ogstm_preproc": "git@github.com:inogs/ogstm_preproc.git",
         "ogstm_postproc": "git@github.com:inogs/ogstm_postproc.git",
     }
+)
+
+# Executables of the Spack environment that the chain uses through the
+# OPA_SPACK_BIN variable; a symbolic link to each of them is created inside
+# the tools directory of the host
+SPACK_TOOLS = (
+    "cut",
+    "grep",
+    "ncdump",
+    "ncftpget",
+    "ncftpput",
+    "ncks",
+    "pngquant",
+    "sort",
+    "sshpass",
+    "stat",
+    "tail",
+    "touch",
+    "wc",
 )
 
 
@@ -313,6 +333,50 @@ def _build_spack_env(
     LOGGER.info("Spack environment setup complete at %s", spack_env_dir)
 
 
+def _link_spack_tools(spack_env_dir: Path, tools_dir: Path) -> None:
+    """
+    Link the executables listed in ``SPACK_TOOLS`` inside ``tools_dir``.
+
+    The links point to the view of the Spack environment and are relative,
+    so they keep working if the chain is moved. The view is populated only
+    when the Spack environment is installed, therefore the links may be
+    dangling until then. Existing links are replaced, while files that
+    are not symbolic links are left untouched (and a warning is logged).
+
+    Args:
+        spack_env_dir: Directory of the Spack environment.
+        tools_dir: Directory where the links are created; it is created if
+            it does not exist.
+
+    """
+    view_bin_dir = spack_env_dir / ".spack-env" / "view" / "bin"
+    if not view_bin_dir.is_dir():
+        LOGGER.info(
+            "The view of the Spack environment (%s) does not exist yet: the "
+            "links to the Spack tools will work once the environment is "
+            "installed",
+            view_bin_dir,
+        )
+
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    for tool in SPACK_TOOLS:
+        link = tools_dir / tool
+        target = Path(os.path.relpath(view_bin_dir / tool, tools_dir))
+        if link.is_symlink():
+            link.unlink()
+        elif link.exists():
+            LOGGER.warning(
+                "Skipping the link to the Spack tool %s: %s already exists "
+                "and it is not a symbolic link",
+                tool,
+                link,
+            )
+            continue
+        LOGGER.debug("Linking %s to %s", link, target)
+        link.symlink_to(target)
+    LOGGER.info("Linked the Spack tools inside %s", tools_dir)
+
+
 def _write_chain_env_file(
     env_file: Path,
     chain_config: ChainConfig,
@@ -501,7 +565,8 @@ def build_chain(
     environment file is written, and the Python (micromamba) and Spack
     environments of the current host are created inside it. The AWS CLI
     is installed in its own micromamba environment and exposed through a
-    wrapper in the ``tools`` directory of the current host.
+    wrapper in the ``tools`` directory of the current host, together with
+    the links to the Spack executables used by the chain.
 
     Args:
         chain_config: Concretized configuration of the chain to build.
@@ -594,6 +659,8 @@ def build_chain(
             chain_compiler=chain_compiler,
             conda_env_path=python_env_dir,
         )
+
+    _link_spack_tools(spack_env_dir=spack_env_dir, tools_dir=tools_dir)
 
     if options.skip_aws:
         LOGGER.info("Skipping the installation of the AWS CLI...")
