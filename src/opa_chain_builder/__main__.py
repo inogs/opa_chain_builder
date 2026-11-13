@@ -4,6 +4,7 @@ from os import environ
 from pathlib import Path
 from sys import exit as sys_exit
 
+from opa_chain_builder.actions import BuildChainOptions
 from opa_chain_builder.actions import build_chain
 from opa_chain_builder.config import ENV_VAR_NAME
 from opa_chain_builder.config import IS_OPA_CONFIG_DIR
@@ -162,6 +163,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     chain_parser.add_argument(
+        "--skip-clone-chain",
+        action="store_true",
+        default=False,
+        help="The chain repository has already been cloned into the main "
+        "directory of the chain, so it does not need to be cloned again.",
+    )
+
+    chain_parser.add_argument(
+        "--skip-python-env",
+        action="store_true",
+        default=False,
+        help="Do not create the Python environment. Note that the Spack "
+        "environment requires a Python environment to be built, so if you "
+        "enable this option you must also enable the --skip-spack-env option.",
+    )
+
+    chain_parser.add_argument(
+        "--skip-spack-env",
+        action="store_true",
+        default=False,
+        help="Do not create the Spack environment of the chain.",
+    )
+
+    chain_parser.add_argument(
+        "--skip-download-repos",
+        action="store_true",
+        default=False,
+        help="Do not clone the auxiliary repositories (ModelBuild, bit.sea, "
+        "ogstm_preproc and ogstm_postproc) of the chain.",
+    )
+
+    chain_parser.add_argument(
         "-w",
         "--workdir",
         type=str,
@@ -217,6 +250,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_chain_options_from_cli(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> BuildChainOptions:
+    """
+    Build the options of the ``build_chain`` action from the CLI arguments.
+
+    If the combination of flags is not valid, the program exits with an
+    error message (through ``parser.error``).
+    """
+    try:
+        return BuildChainOptions(
+            skip_clone_chain=args.skip_clone_chain,
+            skip_python_env=args.skip_python_env,
+            skip_spack_env=args.skip_spack_env,
+            skip_download_repos=args.skip_download_repos,
+        )
+    except ValueError as e:
+        parser.error(str(e))
+
+
 def main() -> int:
     """
     Parse CLI arguments and run the requested action.
@@ -253,6 +306,8 @@ def main() -> int:
         return 0
 
     if args.action == BUILD_CHAIN_ACTION:
+        build_chain_options = _build_chain_options_from_cli(parser, args)
+
         if args.environment_dir is None:
             LOGGER.error(
                 "No environment directory provided and no default found. "
@@ -298,6 +353,7 @@ def main() -> int:
             chain_config=chain_config,
             spack_main_dir=spack_config.main_dir,
             env_configs_dir=args.environment_dir,
+            options=build_chain_options,
         )
         return 0
 

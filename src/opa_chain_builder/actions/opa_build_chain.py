@@ -1,5 +1,6 @@
 import logging
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import cast
@@ -29,14 +30,52 @@ REPOS = MappingProxyType(
 )
 
 
+@dataclass(frozen=True)
+class BuildChainOptions:
+    """
+    Options that control which steps of the chain build are executed.
+
+    Attributes:
+        skip_clone_chain: If ``True``, the chain repository is assumed to be
+            already cloned inside the chain home and it is not cloned again.
+        skip_python_env: If ``True``, the Python (micromamba) environment is
+            not created.
+        skip_spack_env: If ``True``, the Spack environment is not created.
+        skip_download_repos: If ``True``, the auxiliary repositories listed
+            in ``REPOS`` are not cloned.
+
+    Raises:
+        ValueError: If ``skip_python_env`` is ``True`` but ``skip_spack_env``
+            is ``False``, because the Spack environment requires the Python
+            environment to be built.
+
+    """
+
+    skip_clone_chain: bool = False
+    skip_python_env: bool = False
+    skip_spack_env: bool = False
+    skip_download_repos: bool = False
+
+    def __post_init__(self) -> None:
+        """Check that the combination of options is consistent."""
+        if self.skip_python_env and not self.skip_spack_env:
+            error_msg = (
+                "The Spack environment requires the Python environment: "
+                "skip_python_env can be enabled only if skip_spack_env is "
+                "enabled too"
+            )
+            raise ValueError(error_msg)
+
+
 FINAL_MESSAGE = """
 Well done! Your chain is ready (almost)!
 
 The next steps:
 1. Execute `source {env_file}` to activate your environment.
 2. Execute `spack -e {spack_env_dir} install` to install all chain requirements
-3. Execute the model builder in {chain_home}/HOST/{chain_hostname}
-4. Run `make` and `make install` inside the {chain_home}/bin/src directory
+3. Install bit.sea: `pip install -e {chain_home}/HOST/{chain_hostname}/bit.sea`
+4. Execute the model builder in {chain_home}/HOST/{chain_hostname}
+5. Run `make` and `make install` inside the {chain_home}/bin/src directory
 
 And that's it! Enjoy :-D
 """
@@ -244,46 +283,15 @@ def _write_chain_env_file(
     )
 
 
-def build_chain(
-    chain_config: ChainConfig, spack_main_dir: Path, env_configs_dir: Path
-) -> None:
+def _clone_chain_repo(chain_config: ChainConfig, chain_home: Path) -> None:
     """
-    Build an OPA chain described by ``chain_config``.
-
-    The chain repository is cloned into the chain home, the chain
-    environment file is written, and the Python (micromamba) and Spack
-    environments of the current host are created inside it.
+    Clone the chain repository into ``chain_home`` and fix key permissions.
 
     Args:
         chain_config: Concretized configuration of the chain to build.
-        spack_main_dir: Directory of the Spack installation used to create
-            the Spack environment.
-        env_configs_dir: Directory containing the ``conda`` and ``spack``
-            environment configurations.
-
-    Raises:
-        ValueError: If ``chain_config`` has not been concretized.
-        RuntimeError: If git-lfs is not installed.
-        OSError: If the environment directories are not empty.
+        chain_home: Directory where the chain repository is cloned.
 
     """
-    chain_name = cast("str", chain_config.name)
-    chain_home = chain_config.home
-    chain_hostname = chain_config.hostname
-    chain_compiler = chain_config.compiler
-    if chain_home is None or chain_hostname is None:
-        error_msg = (
-            "This procedure has been called without concretizing the "
-            "configuration first"
-        )
-        raise ValueError(error_msg)
-
-    if not is_git_lfs_installed():
-        error_msg = (
-            "git-lfs is not installed. Please install git-lfs to proceed."
-        )
-        raise RuntimeError(error_msg)
-
     LOGGER.info("Cloning chain repository")
     clone_repository(
         repo_url="git@gitlab-ssh.hpc.cineca.it:OGS/v5c.git",
@@ -302,50 +310,19 @@ def build_chain(
         LOGGER.debug("Setting permissions on file %s", key)
         key.chmod(0o600)
 
-    host_dir = chain_home / "HOST"
-    current_host_dir = host_dir / chain_hostname
-    spack_env_dir = current_host_dir / "spack_env"
-    python_env_dir = current_host_dir / "python_env"
 
-    env_file = chain_home / "chain_env.sh"
-    _write_chain_env_file(
-        env_file=env_file,
-        chain_config=chain_config,
-        spack_main_dir=spack_main_dir,
-        python_env_dir=python_env_dir,
-    )
+def _clone_auxiliary_repos(
+    chain_config: ChainConfig, current_host_dir: Path
+) -> None:
+    """
+    Clone the repositories listed in ``REPOS`` into ``current_host_dir``.
 
-    spack_env_dir.mkdir(parents=True, exist_ok=True)
-    python_env_dir.mkdir(parents=True, exist_ok=True)
+    Args:
+        chain_config: Concretized configuration of the chain to build; it
+            provides the branch to check out for each repository.
+        current_host_dir: Directory of the current host inside the chain.
 
-    if any(spack_env_dir.iterdir()):
-        error_msg = (
-            f"The directory of the spack environment {spack_env_dir} "
-            "is not empty."
-        )
-        raise OSError(error_msg)
-    if any(python_env_dir.iterdir()):
-        error_msg = (
-            f"The directory of the python environment {python_env_dir} "
-            "is not empty."
-        )
-        raise OSError(error_msg)
-
-    python_config_dir = env_configs_dir / "conda"
-    _build_py_env(
-        python_config_dir=python_config_dir,
-        env_prefix=python_env_dir,
-        opa_name=chain_name,
-    )
-
-    _build_spack_env(
-        env_configs_dir=env_configs_dir,
-        spack_main_dir=spack_main_dir,
-        spack_env_dir=spack_env_dir,
-        chain_compiler=chain_compiler,
-        conda_env_path=python_env_dir,
-    )
-
+    """
     LOGGER.info("Cloning repos...")
     for repo_name, repo_url in REPOS.items():
         repo_branch_attribute = repo_name.split("_")[-1].replace(".", "")
@@ -361,6 +338,148 @@ def build_chain(
             repo_url=repo_url,
             destination=current_host_dir / repo_name,
             ref=repo_branch,
+        )
+
+
+def _prepare_env_dir(
+    env_dir: Path, env_label: str, *, must_be_empty: bool
+) -> None:
+    """
+    Create the directory of an environment, if it does not exist yet.
+
+    Args:
+        env_dir: Directory of the environment.
+        env_label: Name of the environment, used in the error message.
+        must_be_empty: If ``True``, the directory must be empty because the
+            environment is going to be created inside it.
+
+    Raises:
+        OSError: If ``must_be_empty`` is ``True`` and the directory is not
+            empty.
+
+    """
+    env_dir.mkdir(parents=True, exist_ok=True)
+    if must_be_empty and any(env_dir.iterdir()):
+        error_msg = (
+            f"The directory of the {env_label} environment {env_dir} "
+            "is not empty."
+        )
+        raise OSError(error_msg)
+
+
+def build_chain(
+    chain_config: ChainConfig,
+    spack_main_dir: Path,
+    env_configs_dir: Path,
+    options: BuildChainOptions | None = None,
+) -> None:
+    """
+    Build an OPA chain described by ``chain_config``.
+
+    The chain repository is cloned into the chain home, the chain
+    environment file is written, and the Python (micromamba) and Spack
+    environments of the current host are created inside it.
+
+    Args:
+        chain_config: Concretized configuration of the chain to build.
+        spack_main_dir: Directory of the Spack installation used to create
+            the Spack environment.
+        env_configs_dir: Directory containing the ``conda`` and ``spack``
+            environment configurations.
+        options: Options that control which steps of the build are
+            executed. If ``None``, the default options are used.
+
+    Raises:
+        ValueError: If ``chain_config`` has not been concretized.
+        RuntimeError: If git-lfs is not installed and the chain repository
+            has to be cloned.
+        FileNotFoundError: If the chain repository is not cloned but the
+            chain home directory does not exist.
+        OSError: If the environment directories that have to be created
+            are not empty.
+
+    """
+    if options is None:
+        options = BuildChainOptions()
+
+    chain_name = cast("str", chain_config.name)
+    chain_home = chain_config.home
+    chain_hostname = chain_config.hostname
+    chain_compiler = chain_config.compiler
+    if chain_home is None or chain_hostname is None:
+        error_msg = (
+            "This procedure has been called without concretizing the "
+            "configuration first"
+        )
+        raise ValueError(error_msg)
+
+    if not is_git_lfs_installed() and not options.skip_clone_chain:
+        error_msg = (
+            "git-lfs is not installed. Please install git-lfs to proceed."
+        )
+        raise RuntimeError(error_msg)
+
+    if options.skip_clone_chain:
+        LOGGER.info("Skipping the cloning of the chain repository...")
+        if not chain_home.exists():
+            error_msg = (
+                "The chain repository will not be cloned, but the chain "
+                f"home directory {chain_home} does not exist"
+            )
+            raise FileNotFoundError(error_msg)
+    else:
+        _clone_chain_repo(chain_config=chain_config, chain_home=chain_home)
+
+    host_dir = chain_home / "HOST"
+    current_host_dir = host_dir / chain_hostname
+    spack_env_dir = current_host_dir / "spack_env"
+    python_env_dir = current_host_dir / "python_env"
+
+    env_file = chain_home / "chain_env.sh"
+    _write_chain_env_file(
+        env_file=env_file,
+        chain_config=chain_config,
+        spack_main_dir=spack_main_dir,
+        python_env_dir=python_env_dir,
+    )
+
+    _prepare_env_dir(
+        env_dir=spack_env_dir,
+        env_label="spack",
+        must_be_empty=not options.skip_spack_env,
+    )
+    _prepare_env_dir(
+        env_dir=python_env_dir,
+        env_label="python",
+        must_be_empty=not options.skip_python_env,
+    )
+
+    if options.skip_python_env:
+        LOGGER.info("Skipping the creation of the Python environment...")
+    else:
+        python_config_dir = env_configs_dir / "conda"
+        _build_py_env(
+            python_config_dir=python_config_dir,
+            env_prefix=python_env_dir,
+            opa_name=chain_name,
+        )
+
+    if options.skip_spack_env:
+        LOGGER.info("Skipping the creation of the Spack environment...")
+    else:
+        _build_spack_env(
+            env_configs_dir=env_configs_dir,
+            spack_main_dir=spack_main_dir,
+            spack_env_dir=spack_env_dir,
+            chain_compiler=chain_compiler,
+            conda_env_path=python_env_dir,
+        )
+
+    if options.skip_download_repos:
+        LOGGER.info("Skipping the cloning of the auxiliary repositories...")
+    else:
+        _clone_auxiliary_repos(
+            chain_config=chain_config, current_host_dir=current_host_dir
         )
 
     LOGGER.info("Chain is ready!")
