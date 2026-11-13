@@ -195,6 +195,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     chain_parser.add_argument(
+        "--skip-aws",
+        action="store_true",
+        default=False,
+        help="Do not install the AWS CLI (and its environment) in the chain.",
+    )
+
+    chain_parser.add_argument(
         "-w",
         "--workdir",
         type=str,
@@ -265,6 +272,7 @@ def _build_chain_options_from_cli(
             skip_python_env=args.skip_python_env,
             skip_spack_env=args.skip_spack_env,
             skip_download_repos=args.skip_download_repos,
+            skip_aws=args.skip_aws,
         )
     except ValueError as e:
         parser.error(str(e))

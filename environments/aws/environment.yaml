@@ -1,0 +1,7 @@
+name: aws
+
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - awscli >=2
